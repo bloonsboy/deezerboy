@@ -1,0 +1,13 @@
+# Python cache files
+pycache/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables file
+.env
+
+# Virtual environment folders
+venv/
+env/
+.venv/
