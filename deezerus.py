@@ -58,6 +58,7 @@ def create_new_row(track: dict, playlist_title: str, full_version: bool) -> dict
             "album": track_details.get("album", {}).get("title"),
             "duration": track_details.get("duration"),
             "rank": track_details.get("rank"),
+            "isrc": track_details.get("isrc"),
         }
         if full_version:
             new_track_info.update({
@@ -77,7 +78,8 @@ def create_new_row(track: dict, playlist_title: str, full_version: bool) -> dict
     except Exception as e:
         logging.error(f"Error processing track ID {track['id']}: {e}")
 
-def create_dataframe(user_id: str, full_version: bool = False) -> pd.DataFrame:
+
+def create_track_list(user_id: str, full_version: bool = False) -> pd.DataFrame:
     """
     Create a pandas DataFrame from a user ID.
 
@@ -90,9 +92,9 @@ def create_dataframe(user_id: str, full_version: bool = False) -> pd.DataFrame:
     """
     df_tracks = pd.DataFrame(columns=COLUMNS_FULL if full_version else COLUMNS_SHORT)
     playlists = get_playlist_ids(user_id)
-    for pid in playlists:
+    for pid in tqdm(playlists, desc="Processing Playlists"):
         playlist = fetch_with_retry(f"https://api.deezer.com/playlist/{pid}?limit=2000")
-        logging.info(f"Playlist '{playlist['title']}' contains {len(playlist['tracks']['data'])} tracks.")
+        logging.debug(f"Playlist '{playlist['title']}' contains {len(playlist['tracks']['data'])} tracks.")
 
         existing_track_ids = set(df_tracks['id'])
         new_rows = []
@@ -108,5 +110,10 @@ def create_dataframe(user_id: str, full_version: bool = False) -> pd.DataFrame:
         if new_rows:
             new_tracks_df = pd.DataFrame(new_rows)
             df_tracks = pd.concat([df_tracks, new_tracks_df], ignore_index=True)
+
+    artist_specific_cols = sorted([col for col in df_tracks.columns if col.startswith('artist_')])
+    base_cols = [col for col in df_tracks.columns if col not in artist_specific_cols]
+    insert_pos = base_cols.index('artist') + 1
+    df_tracks = df_tracks[base_cols[:insert_pos] + artist_specific_cols + base_cols[insert_pos:]]
 
     return df_tracks
