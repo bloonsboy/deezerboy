@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 import pandas as pd
 
-COLUMNS_SHORT = ["id", "title", "artist", "album", "duration", "rank"] # base columns
+COLUMNS_SHORT = ["id", "title", "artist", "album", "duration", "rank", "isrc"] # base columns
 COLUMNS_FULL = COLUMNS_SHORT + ["release_date", "bpm", "gain"] # extended columns
 
 def fetch_with_retry(url: str, max_retries: int = 2, delay: int = 5) -> dict:
@@ -35,7 +35,7 @@ def get_playlist_ids(user_id: str, limit: int = 100) -> list[int]:
     return playlist_ids
 
 
-def create_new_row(track: dict, playlist_title: str, full_version: bool) -> dict:
+def get_new_row(track: dict, playlist_title: str, full_version: bool) -> dict:
     """
     Create a new row for the DataFrame from track details.
 
@@ -71,7 +71,7 @@ def create_new_row(track: dict, playlist_title: str, full_version: bool) -> dict
                 new_track_info[f'artist_{j+1}'] = artist
             if new_track_info.get("artist") == new_track_info.get("artist_1"):
                 new_track_info.pop("artist_1", None)
-            new_track_info[playlist_title] = True
+        new_track_info[playlist_title] = True
         
         return new_track_info
 
@@ -79,7 +79,7 @@ def create_new_row(track: dict, playlist_title: str, full_version: bool) -> dict
         logging.error(f"Error processing track ID {track['id']}: {e}")
 
 
-def create_track_list(user_id: str, full_version: bool = False) -> pd.DataFrame:
+def get_track_list(user_id: str, full_version: bool = False) -> pd.DataFrame:
     """
     Create a pandas DataFrame from a user ID.
 
@@ -102,7 +102,7 @@ def create_track_list(user_id: str, full_version: bool = False) -> pd.DataFrame:
             if track['id'] in existing_track_ids:
                 df_tracks.loc[df_tracks['id'] == track['id'], playlist['title']] = True
             else:
-                new_row = create_new_row(track, playlist['title'], full_version)
+                new_row = get_new_row(track, playlist['title'], full_version)
                 if new_row:
                     new_rows.append(new_row)
                     existing_track_ids.add(track['id'])
@@ -115,5 +115,16 @@ def create_track_list(user_id: str, full_version: bool = False) -> pd.DataFrame:
     base_cols = [col for col in df_tracks.columns if col not in artist_specific_cols]
     insert_pos = base_cols.index('artist') + 1
     df_tracks = df_tracks[base_cols[:insert_pos] + artist_specific_cols + base_cols[insert_pos:]]
+    df_tracks = df_tracks.sort_values(by=['artist', 'album', 'title'], ascending=True).reset_index(drop=True)
 
+    logging.info(f"Total unique tracks collected: {len(df_tracks)}")
     return df_tracks
+
+
+def get_duplicates(tracks: pd.DataFrame, subset: list = ['isrc'], order: str = 'artist') -> pd.DataFrame:
+    """
+    Show duplicate tracks based on ISRC code by default.
+    """
+    duplicates = tracks[tracks.duplicated(subset=subset, keep=False)].sort_values(by=order)
+    logging.info(f"Found {len(duplicates)/2} duplicate tracks based on {subset}.")
+    return duplicates
