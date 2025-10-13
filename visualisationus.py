@@ -46,92 +46,80 @@ def format_duration(seconds: int) -> str:
 
 def artist_score(
     df: pd.DataFrame,
-    playlist_cols: list = COLUMNS_FULL,
+    playlist_cols: list,
     heart_playlist: str = "Coups de cœur",
 ) -> pd.DataFrame:
-    HEART_BONUS = 5
-
-    # Check if the "Coups de cœur" playlist exists
+    HEART_BONUS = 4
     if heart_playlist not in playlist_cols:
-        print(
-            f"⚠️ Playlist '{heart_playlist}' not found. Score will be based solely on track count."
+        logging.warning(
+            f"'{heart_playlist}' playlist not found. Using simple count for artist scores."
         )
-        # Simple count if the playlist does not exist
         artist_scores = df["artist"].value_counts().reset_index()
         artist_scores.columns = ["artist", "score"]
         return artist_scores
 
-    # Score calculation
     artist_scores = (
         df.groupby("artist")
         .apply(lambda x: len(x) + (x[heart_playlist].sum() * HEART_BONUS))
         .reset_index(name="score")
     )
-
     return artist_scores.sort_values("score", ascending=False)
 
 
 def calculate_playlist_similarity(df, playlist_cols):
-    """
-    Calculates the similarity between playlists using the Jaccard index.
-    Jaccard(A, B) = |A ∩ B| / |A ∪ B|
-    """
+    """Calcule la similarité entre les playlists en utilisant l'indice de Jaccard."""
     similarity_matrix = pd.DataFrame(
         index=playlist_cols, columns=playlist_cols, dtype=float
     )
-
     for p1 in playlist_cols:
         for p2 in playlist_cols:
             if p1 == p2:
                 similarity_matrix.loc[p1, p2] = 1.0
                 continue
-
             set1 = set(df[df[p1] == True].index)
             set2 = set(df[df[p2] == True].index)
-
             intersection = len(set1.intersection(set2))
             union = len(set1.union(set2))
-
-            if union == 0:
-                similarity_matrix.loc[p1, p2] = 0.0
-            else:
-                similarity_matrix.loc[p1, p2] = intersection / union
-
+            similarity_matrix.loc[p1, p2] = intersection / union if union > 0 else 0.0
     return similarity_matrix
 
 
-# --- 1. DATA LOADING AND PREPARATION ---
 df = load_data()
 df.fillna({col: False for col in df.columns if df[col].dtype == "bool"}, inplace=True)
-
-# Identify playlist columns
 playlist_cols = [
     col
     for col in df.columns
     if col not in COLUMNS_FULL and not col.startswith("artist_")
 ]
 
-# --- 2. CALCULATING KPIs (Key Performance Indicators) ---
 total_tracks = len(df)
 total_playlists = len(playlist_cols)
 total_listening_time = format_duration(df["duration"].sum())
-# A "duplicate" is a track present in more than one playlist
-df["playlist_count"] = df[playlist_cols].sum(axis=1)
-duplicate_tracks = (df["playlist_count"] > 1).sum()
-
-# --- 3. PREPARING DATA FOR PLOTS ---
-# Artist scores
-# Important: Change 'Coups de cœur' to the exact name of your favorites playlist if it's different.
-artist_scores_df = calculate_artist_score(
+duplicate_track_list = df[df.duplicated(subset=playlist_cols, keep=False)].sort_values(
+    by="artist"
+)
+duplicate_tracks = len(duplicate_track_list)/2
+artist_scores_df = artist_score(
     df, playlist_cols, heart_playlist="Coups de cœur"
 )
 top_20_artists = artist_scores_df.head(20)
-
-# Playlist similarity
 similarity_df = calculate_playlist_similarity(df, playlist_cols)
+pairs = similarity_df.unstack().reset_index()
+pairs.columns = ["Playlist_A", "Playlist_B", "similarite"]
+pairs = pairs[pairs["Playlist_A"] != pairs["Playlist_B"]]
+pairs["pair_key"] = pairs.apply(
+    lambda row: tuple(sorted((row["Playlist_A"], row["Playlist_B"]))), axis=1
+)
+pairs = pairs.drop_duplicates(subset=["pair_key"]).drop(columns=["pair_key"])
+top_10_similar_playlists = pairs.sort_values("similarite", ascending=False).head(10)
+top_10_similar_playlists["pair_label"] = (
+    top_10_similar_playlists["Playlist_A"]
+    + " & "
+    + top_10_similar_playlists["Playlist_B"]
+)
 
-# Duration distribution
 df["duration_min"] = df["duration"] / 60
+
 
 # --- 4. CREATING PLOTLY FIGURES ---
 fig_top_artists = px.bar(
@@ -143,37 +131,39 @@ fig_top_artists = px.bar(
     template=PLOTLY_TEMPLATE,
 ).update_layout(yaxis={"categoryorder": "total ascending"})
 
-fig_similarity = px.imshow(
-    similarity_df,
-    text_auto=".2f",
-    title="🤝 Playlist Similarity (Jaccard Index)",
-    color_continuous_scale="Blues",
+fig_top_10_similar = px.bar(
+    top_10_similar_playlists,
+    x="similarite",
+    y="pair_label",
+    orientation="h",
+    title="🤝 Top 10 des paires de playlists les plus proches",
+    text="similarite",
     template=PLOTLY_TEMPLATE,
 )
+fig_top_10_similar.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+fig_top_10_similar.update_layout(
+    yaxis_title="",
+    xaxis_title="Indice de Similarité (Jaccard)",
+    yaxis={"categoryorder": "total ascending"},
+)
+
 
 fig_duration = px.histogram(
     df,
     x="duration_min",
-    nbins=50,
+    nbins=100,
     title="⏳ Track Duration Distribution (minutes)",
     template=PLOTLY_TEMPLATE,
 )
 
-# --- 5. DASH APP LAYOUT ---
 app = dash.Dash(__name__, external_stylesheets=[THEME])
-
 kpi_card_style = "text-center m-2"
 
 app.layout = dbc.Container(
     [
-        # Title
         dbc.Row(
-            dbc.Col(
-                html.H1("My Deezer Music Universe", className="text-center my-4"),
-                width=12,
-            )
+            dbc.Col(html.H1("Mon Univers Musical Deezer", className="text-center my-4"))
         ),
-        # KPIs
         dbc.Row(
             [
                 dbc.Col(
@@ -182,7 +172,7 @@ app.layout = dbc.Container(
                             [
                                 html.H3("🎵"),
                                 html.H4(f"{total_tracks:,}"),
-                                html.P("Unique Tracks"),
+                                html.P("Morceaux Uniques"),
                             ]
                         ),
                         className=kpi_card_style,
@@ -206,7 +196,7 @@ app.layout = dbc.Container(
                             [
                                 html.H3("🎧"),
                                 html.H4(total_listening_time),
-                                html.P("Total Listening Time"),
+                                html.P("Temps d'écoute total"),
                             ]
                         ),
                         className=kpi_card_style,
@@ -218,7 +208,7 @@ app.layout = dbc.Container(
                             [
                                 html.H3("🔄"),
                                 html.H4(f"{duplicate_tracks:,}"),
-                                html.P("Shared Tracks"),
+                                html.P("Morceaux en commun"),
                             ]
                         ),
                         className=kpi_card_style,
@@ -227,20 +217,15 @@ app.layout = dbc.Container(
             ],
             className="justify-content-center mb-4",
         ),
-        # Main plots
+        # ON REMPLACE L'ANCIEN GRAPHIQUE PAR LE NOUVEAU
         dbc.Row(
             [
-                dbc.Col(dcc.Graph(figure=fig_similarity), width=12, lg=6),
+                dbc.Col(dcc.Graph(figure=fig_top_10_similar), width=12, lg=6),
                 dbc.Col(dcc.Graph(figure=fig_top_artists), width=12, lg=6),
             ],
             className="mb-4",
         ),
-        # Secondary plot
-        dbc.Row(
-            [
-                dbc.Col(dcc.Graph(figure=fig_duration), width=12),
-            ]
-        ),
+        dbc.Row([dbc.Col(dcc.Graph(figure=fig_duration), width=12)]),
     ],
     fluid=True,
 )
