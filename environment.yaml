@@ -1,0 +1,4 @@
+name: deezerboy
+channels:
+  - conda-forge
+dependencies:

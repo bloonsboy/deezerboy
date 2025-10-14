@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 import pandas as pd
 
-COLUMNS_SHORT = ["id", "title", "artist", "album", "duration", "rank", "isrc"] # base columns
+COLUMNS_SHORT = ["id", "title", "artist", "album", "duration", "rank", "isrc", "preview"] # base columns
 COLUMNS_FULL = COLUMNS_SHORT + ["release_date", "bpm", "gain"] # extended columns
 
 def fetch_with_retry(url: str, max_retries: int = 2, delay: int = 5) -> dict:
@@ -59,6 +59,7 @@ def get_new_row(track: dict, playlist_title: str, full_version: bool) -> dict:
             "duration": track_details.get("duration"),
             "rank": track_details.get("rank"),
             "isrc": track_details.get("isrc"),
+            "preview": track_details.get("preview"),
         }
         if full_version:
             new_track_info.update({
