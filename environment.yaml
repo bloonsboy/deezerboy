@@ -2,3 +2,15 @@ name: deezerboy
 channels:
   - conda-forge
 dependencies:
+  - python=3.11
+  - pip
+  - pandas
+  - numpy
+  - requests
+  - tqdm
+  - dash
+  - dash-bootstrap-components
+  - plotly
+  - jupyterlab
+  - ipykernel
+  - python-dotenv
