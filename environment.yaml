@@ -1,16 +1,36 @@
 name: deezerboy
 channels:
-  - conda-forge
+  - pytorch          # Priorité pour PyTorch
+  - conda-forge      # Pour les paquets communautaires
+  - defaults         # Canal par défaut
 dependencies:
+  # --- Interpréteur et gestionnaire de paquets ---
   - python=3.11
   - pip
+
+  # --- Analyse de données et requêtes web ---
   - pandas
   - numpy
   - requests
-  - tqdm
+
+  # --- Dashboard et visualisation ---
   - dash
   - dash-bootstrap-components
   - plotly
+
+  # --- Outils de développement ---
   - jupyterlab
   - ipykernel
   - python-dotenv
+  - tqdm
+
+  # --- Dépendance pour le traitement audio ---
+  - ffmpeg
+
+  # --- Bibliothèques de Machine Learning (installées via Pip) ---
+  - pip:
+    - transformers
+    - torch
+    - tokenizers
+    - accelerate
+    - huggingface_hub
