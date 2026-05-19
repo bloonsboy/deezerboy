@@ -36,16 +36,12 @@ COLUMNS_FULL = COLUMNS_SHORT + [
     "bpm",
     "gain",
     "genre",
-    "lastfm_genre",
-    "lastfm_tags",
-    "lastfm_primary_tag",
-    "lastfm_artist_listeners",
-    "lastfm_artist_playcount",
-    "lastfm_track_listeners",
-    "lastfm_track_playcount",
-    "lastfm_bio_summary",
-    "lastfm_similar_artists",
-    "lastfm_source",
+    "tags",
+    "artist_listeners",
+    "artist_playcount",
+    "track_listeners",
+    "track_playcount",
+    "similar_artists",
 ]
 
 LASTFM_CACHE_PATH = Path.home() / ".cache" / "deezerboy" / "lastfm_cache.json"
@@ -224,8 +220,9 @@ def _extract_summary(source: dict | None, key: str) -> Optional[str]:
 
     summary = html.unescape(summary)
     summary = re.sub(r"<[^>]+>", "", summary)
+    summary = re.sub(r"\s+", " ", summary)
     summary = summary.strip()
-    return summary or None
+    return (summary[:100] + "...") if len(summary) > 100 else (summary or None)
 
 
 def _lastfm_track_and_artist_info(
@@ -251,10 +248,7 @@ def get_lastfm_metadata(artist: str, title: str) -> dict[str, Any]:
     track_tags = _extract_tags(track_data, "track")
     artist_tags = _extract_tags(artist_data, "artist")
 
-    tags: list[str] = []
-    for tag in track_tags + artist_tags:
-        if tag not in tags:
-            tags.append(tag)
+    tags = track_tags if track_tags else artist_tags
 
     artist_node = artist_data.get("artist", {}) if artist_data else {}
     track_node = track_data.get("track", {}) if track_data else {}
@@ -278,12 +272,6 @@ def get_lastfm_metadata(artist: str, title: str) -> dict[str, Any]:
         if name and name not in similar_artists:
             similar_artists.append(name)
 
-    source_parts = []
-    if track_data:
-        source_parts.append("track")
-    if artist_data:
-        source_parts.append("artist")
-
     artist_listeners = None
     artist_playcount = None
     if isinstance(artist_stats, dict):
@@ -296,19 +284,17 @@ def get_lastfm_metadata(artist: str, title: str) -> dict[str, Any]:
         track_listeners = track_node.get("listeners")
         track_playcount = track_node.get("playcount")
 
+    tags_str = "; ".join(tags[:5]) if tags else None
+    similar_str = "; ".join(similar_artists[:5]) if similar_artists else None
+
     return {
-        "lastfm_genre": tags[0] if tags else None,
-        "lastfm_tags": ", ".join(tags[:5]) if tags else None,
-        "lastfm_primary_tag": tags[0] if tags else None,
-        "lastfm_artist_listeners": artist_listeners,
-        "lastfm_artist_playcount": artist_playcount,
-        "lastfm_track_listeners": track_listeners,
-        "lastfm_track_playcount": track_playcount,
-        "lastfm_bio_summary": _extract_summary(artist_data, "artist"),
-        "lastfm_similar_artists": (
-            ", ".join(similar_artists[:5]) if similar_artists else None
-        ),
-        "lastfm_source": "+".join(source_parts) if source_parts else None,
+        "genre": tags[0] if tags else None,
+        "tags": tags_str,
+        "artist_listeners": artist_listeners,
+        "artist_playcount": artist_playcount,
+        "track_listeners": track_listeners,
+        "track_playcount": track_playcount,
+        "similar_artists": similar_str,
     }
 
 
@@ -316,7 +302,7 @@ def get_genres_lastfm(artist: str, title: str) -> Optional[str]:
     """Récupère les genres via Last.fm API."""
     try:
         metadata = get_lastfm_metadata(artist, title)
-        return metadata.get("lastfm_genre")
+        return metadata.get("genre")
     except Exception as exc:
         logger.debug(f"Last.fm erreur: {exc}")
         return None
@@ -412,7 +398,7 @@ def _get_track_enrichment(track_data: dict) -> dict[str, Any]:
     title = track_data.get("title", "")
 
     lastfm_metadata = get_lastfm_metadata(artist_name, title)
-    genre = lastfm_metadata.get("lastfm_genre")
+    genre = lastfm_metadata.get("genre")
 
     if not genre:
         genre = get_genres_musicbrainz(
@@ -425,7 +411,12 @@ def _get_track_enrichment(track_data: dict) -> dict[str, Any]:
 
     return {
         "genre": genre,
-        **lastfm_metadata,
+        "tags": lastfm_metadata.get("tags"),
+        "artist_listeners": lastfm_metadata.get("artist_listeners"),
+        "artist_playcount": lastfm_metadata.get("artist_playcount"),
+        "track_listeners": lastfm_metadata.get("track_listeners"),
+        "track_playcount": lastfm_metadata.get("track_playcount"),
+        "similar_artists": lastfm_metadata.get("similar_artists"),
     }
 
 
