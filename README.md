@@ -34,7 +34,10 @@ LASTFM_API_KEY=
 ```
 
 - `DEEZER_USER_ID` est obligatoire.
-- `LASTFM_API_KEY` est optionnelle. Elle permet d'enrichir les genres via Last.fm.
+- `LASTFM_API_KEY` est optionnelle. Elle permet d'enrichir les genres, tags,
+  popularité et artistes similaires via Last.fm.
+- Les réponses Last.fm sont mises en cache localement dans
+  `~/.cache/deezerboy/lastfm_cache.json` pour éviter les appels répétés.
 
 Pour trouver votre ID Deezer :
 
