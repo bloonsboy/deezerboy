@@ -33,7 +33,7 @@ def export_csv(df: pd.DataFrame, output_path: Path | None = None) -> Path:
     path = output_path or _default_path("csv")
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
-    logger.info(f"✅ CSV exporté: {path}")
+    logger.info(f"CSV exported: {path}")
     return path
 
 

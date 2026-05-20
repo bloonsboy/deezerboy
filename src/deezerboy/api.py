@@ -284,7 +284,7 @@ def fetch_tracks(
     full_version: bool = True,
     progress_callback=None,
 ) -> pd.DataFrame:
-    logger.info(f"🎵 Récupération des données pour l'utilisateur {user_id}...")
+    logger.info(f"Retrieving data for user {user_id}...")
 
     df = pd.DataFrame(columns=COLUMNS_FULL if full_version else COLUMNS_SHORT)
     playlists = get_playlist_ids(user_id)
@@ -292,7 +292,7 @@ def fetch_tracks(
     if progress_callback:
         progress_callback("start", 0, len(playlists))
 
-    for idx, pid in enumerate(tqdm(playlists, desc="📚 Récupération des playlists")):
+    for idx, pid in enumerate(tqdm(playlists, desc="Fetching playlists")):
         playlist = fetch_with_retry(f"https://api.deezer.com/playlist/{pid}?limit=2000")
 
         if progress_callback:

@@ -17,38 +17,38 @@ load_dotenv()
 
 @click.group()
 def cli():
-    """🎵 DeezerBoy - Gérez votre univers musical Deezer"""
+    """DeezerBoy - Manage your Deezer music universe"""
 
 
 @cli.command()
 @click.option(
     "--user-id",
     default=os.getenv("DEEZER_USER_ID", ""),
-    help="ID utilisateur Deezer (par défaut: depuis .env)",
+    help="Deezer user ID (default: from .env)",
 )
-@click.option("--output", type=click.Path(), default=None, help="Chemin d'export")
+@click.option("--output", type=click.Path(), default=None, help="Export path")
 @click.option(
     "--format",
     type=click.Choice(["csv", "excel", "both"]),
     default="csv",
-    help="Format d'export",
+    help="Export format",
 )
 def export(user_id: str, output: str | None, format: str):
-    """📥 Récupère vos musiques et les exporte en CSV/Excel"""
+    """Retrieve your music and export to CSV/Excel"""
     if not user_id:
-        click.secho("❌ ID Deezer requis. Ajoutez DEEZER_USER_ID dans .env", fg="red")
+        click.secho("ERROR: Deezer ID required. Add DEEZER_USER_ID to .env", fg="red")
         return
     try:
-        click.secho("🎵 Récupération de vos musiques...", fg="cyan")
+        click.secho("Retrieving your music...", fg="cyan")
         df = fetch_tracks(user_id, full_version=True)
         path = Path(output) if output else None
         if format in ["csv", "both"]:
             export_csv(df, path)
         if format in ["excel", "both"]:
             export_excel(df, path)
-        click.secho(f"✅ Succès! {len(df)} chansons exportées.", fg="green")
+        click.secho(f"SUCCESS: {len(df)} tracks exported.", fg="green")
     except Exception as exc:
-        click.secho(f"❌ Erreur: {exc}", fg="red")
+        click.secho(f"ERROR: {exc}", fg="red")
         raise
 
 
