@@ -1,101 +1,105 @@
 # DeezerBoy
 
-DeezerBoy exporte votre bibliotheque Deezer en CSV ou Excel et permet de consulter des statistiques dans le terminal ou via une interface Streamlit.
+Exporte votre bibliothèque Deezer en CSV ou Excel et explore vos statistiques via le terminal ou une interface Streamlit.
 
-## Prerequis
+## Prérequis
 
-- Python 3.11 ou plus
-- Un fichier `.env` a la racine du projet
+- Python 3.11+
+- [`just`](https://just.systems) — command runner cross-platform (Linux, Mac, Windows)
+
+### Installer `just`
+
+| OS      | Commande                    |
+|---------|-----------------------------|
+| Windows | `winget install Casey.Just` |
+| Mac     | `brew install just`         |
+| Linux   | `cargo install just`        |
 
 ## Installation
 
-### Avec `uv`
-
 ```bash
-uv sync
-source .venv/bin/activate
+just install
 ```
 
-### Avec `pip`
-
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
+Cela :
+- installe les dépendances via `uv sync --extra dev` (ou `pip install -e ".[dev]"` si uv absent)
+- crée un `.env` depuis `.env.example` s'il n'existe pas encore
 
 ## Configuration
 
-Creez un fichier `.env` a la racine :
+Renseignez le fichier `.env` créé à la racine :
 
 ```env
 DEEZER_USER_ID=123456789
-LASTFM_API_KEY=
+LASTFM_API_KEY=votre_clé
 ```
 
-- `DEEZER_USER_ID` est obligatoire.
-- `LASTFM_API_KEY` est optionnelle. Elle permet d'enrichir les genres, tags,
-  popularité et artistes similaires via Last.fm.
-- Les réponses Last.fm sont mises en cache localement dans
-  `~/.cache/deezerboy/lastfm_cache.json` pour éviter les appels répétés.
-
-Pour trouver votre ID Deezer :
-
-1. Connectez-vous sur `https://www.deezer.com`
-2. Ouvrez votre profil
-3. Recuperez le nombre dans l'URL `https://www.deezer.com/profile/123456789`
+- `DEEZER_USER_ID` : obligatoire. Trouvez votre ID dans l'URL de votre profil Deezer : `https://www.deezer.com/profile/123456789`
+- `LASTFM_API_KEY` : optionnelle. Permet d'enrichir les données (genre, tags, popularité, artistes similaires). Créez une clé sur [last.fm/api](https://www.last.fm/api).
 
 ## Commandes
 
-Une fois l'environnement active :
-
 ```bash
-deezerboy export
-deezerboy stats
-deezerboy app
+just install   # Installation et setup initial
+just run       # Lance l'interface Streamlit
+just export    # Exporte en CSV dans ~/Downloads/
+just stats     # Affiche les statistiques en terminal
+just lint      # Vérifie le code avec ruff
+just clean     # Supprime les __pycache__
 ```
 
-Si `deezerboy export` ne fonctionne pas, lancez le binaire du projet directement :
-
-```bash
-.venv/bin/deezerboy export
-```
-
-## Exemples utiles
+Les commandes `deezerboy` restent disponibles directement :
 
 ```bash
 deezerboy export --format excel
 deezerboy export --format both --output ./exports
 deezerboy export --user-id 123456789
 deezerboy stats --path ./exports/track_list.csv
-deezerboy app
 ```
 
-## Sorties
+## Données exportées
 
-- Export par defaut dans `~/Downloads/`
-- Fichiers disponibles : CSV, Excel, ou les deux
-- Interface web Streamlit sur `http://localhost:8501`
+Chaque piste contient les champs suivants :
 
-## Depannage
+| Champ               | Source        | Description                          |
+|---------------------|---------------|--------------------------------------|
+| `id`                | Deezer        | Identifiant unique                   |
+| `title`             | Deezer        | Titre                                |
+| `artist`            | Deezer        | Artiste principal                    |
+| `artist_1`, `_2`... | MusicBrainz   | Artistes crédités (featuring, etc.)  |
+| `album`             | Deezer        | Album                                |
+| `duration`          | Deezer        | Durée en secondes                    |
+| `rank`              | Deezer        | Popularité Deezer                    |
+| `isrc`              | Deezer        | Code ISRC                            |
+| `release_date`      | MusicBrainz   | Date de sortie                       |
+| `genre`             | Last.fm / MusicBrainz / Deezer | Genre principal (cascade de fallback) |
+| `tags`              | Last.fm        | Tags (séparés par `;`)               |
+| `artist_listeners`  | Last.fm        | Auditeurs uniques de l'artiste       |
+| `artist_playcount`  | Last.fm        | Écoutes totales de l'artiste         |
+| `track_listeners`   | Last.fm        | Auditeurs uniques de la piste        |
+| `track_playcount`   | Last.fm        | Écoutes totales de la piste          |
+| `similar_artists`   | Last.fm        | Artistes similaires (séparés par `;`)|
 
-### `deezerboy: command not found`
+Les colonnes de playlists (`POJ`, `CTP`, etc.) sont ajoutées avec `True`/`False` pour chaque piste.
 
-L'environnement virtuel n'est pas active ou le package n'est pas installe.
+## Flux d'enrichissement
+
+Pour chaque piste unique, deux appels sont faits (en plus de la récupération des playlists) :
+
+1. **Last.fm** — `track.getInfo` + `artist.getInfo` → genre, tags, stats d'écoute, artistes similaires
+   - Résultats mis en cache 30 jours dans `~/.cache/deezerboy/lastfm_cache.json`
+2. **MusicBrainz** — un seul appel via ISRC (ou recherche artiste/titre en fallback) → `release_date`, artistes crédités, genre (fallback)
+
+Si aucun genre n'est trouvé, un dernier appel à l'API album Deezer est effectué.
+
+## Dépannage
+
+**`deezerboy: command not found`** — activez le venv ou relancez `just install`.
 
 ```bash
 source .venv/bin/activate
-pip install -e .
 ```
 
-### `DEEZER_USER_ID` introuvable
+**`DEEZER_USER_ID` introuvable** — vérifiez que `.env` existe à la racine et contient `DEEZER_USER_ID=votre_id`.
 
-Verifiez que le fichier `.env` existe a la racine du projet et contient bien :
-
-```env
-DEEZER_USER_ID=123456789
-```
-
-### Python trop ancien
-
-Le projet demande Python 3.11+. Avec une version plus ancienne, le CLI peut echouer au demarrage.
+**Python trop ancien** — le projet requiert Python 3.11+. Vérifiez avec `python --version`.
