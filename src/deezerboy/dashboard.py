@@ -6,6 +6,7 @@ from io import BytesIO
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -136,11 +137,13 @@ if df is not None:
     st.divider()
 
     tabs = st.tabs(
-        ["📊 Stats", "🎤 Artistes", "📚 Playlists", "🎵 Chansons", "➕ Ajouter", "💾 Export"]
+        ["📊 Stats", "🏷️ Tags", "🔗 Similar", "🎤 Artistes", "📚 Playlists", "🎵 Chansons", "➕ Ajouter", "💾 Export"]
     )
 
     with tabs[0]:
         st.header("📊 Statistiques Globales")
+
+        # Row 1: Duration and Genres
         col1, col2 = st.columns(2)
 
         with col1:
@@ -167,12 +170,147 @@ if df is not None:
                 fig.update_layout(height=400, showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
 
+        # Row 2: Additional visualizations
+        col3, col4 = st.columns(2)
+
+        with col3:
+            # Top tracks by playcount (if available)
+            if 'track_playcount' in df.columns and df['track_playcount'].notna().any():
+                top_tracks = df.nlargest(10, 'track_playcount')[['title', 'artist', 'track_playcount']]
+                fig = px.bar(
+                    top_tracks,
+                    x='track_playcount',
+                    y='title',
+                    orientation='h',
+                    title="🔥 Top 10 Tracks (Playcount)",
+                    color='track_playcount',
+                    color_continuous_scale="Viridis"
+                )
+                fig.update_layout(height=400, yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                # Alternative: Top tracks by duration
+                top_duration = df.nlargest(10, 'duration')[['title', 'artist', 'duration']]
+                fig = px.bar(
+                    top_duration,
+                    x='duration',
+                    y='title',
+                    orientation='h',
+                    title="⏱️ Top 10 Tracks (Duration)",
+                    color='duration',
+                    color_continuous_scale="Plasma"
+                )
+                fig.update_layout(height=400, yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig, use_container_width=True)
+
+        with col4:
+            # Artist diversity pie chart
+            artist_counts = df['artist'].value_counts().head(10)
+            fig = px.pie(
+                values=artist_counts.values,
+                names=artist_counts.index,
+                title="👥 Répartition des Artistes (Top 10)",
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+
+    with tabs[1]:
+        st.header("🏷️ Analyse des Tags")
+
+        if 'tags' in df.columns and df['tags'].notna().any():
+            # Process tags - split by semicolon and flatten
+            tags_series = df['tags'].dropna().str.split(';').explode().str.strip()
+            tags_series = tags_series[tags_series != '']  # Remove empty strings
+
+            if not tags_series.empty:
+                tag_counts = tags_series.value_counts().head(20)
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    fig = px.bar(
+                        x=tag_counts.values,
+                        y=tag_counts.index,
+                        orientation='h',
+                        title="🏷️ Top 20 Tags",
+                        labels={'x': 'Fréquence', 'y': 'Tag'},
+                        color=tag_counts.values,
+                        color_continuous_scale="Viridis"
+                    )
+                    fig.update_layout(height=500, yaxis={'categoryorder':'total ascending'})
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with col2:
+                    # Tag co-occurrence network (simplified - showing most common pairs)
+                    # For simplicity, let's show tag distribution as a pie chart
+                    fig = px.pie(
+                        values=tag_counts.head(10).values,
+                        names=tag_counts.head(10).index,
+                        title="🥧 Distribution des Tags (Top 10)",
+                        color_discrete_sequence=px.colors.qualitative.Pastel
+                    )
+                    fig.update_layout(height=500)
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Aucun tag trouvé dans les données")
+        else:
+            st.info("Colonne 'tags' non disponible (activez LASTFM_API_KEY dans .env pour récupérer les tags)")
+
+    with tabs[2]:
+        st.header("🔗 Artistes Similaires")
+
+        if 'similar_artists' in df.columns and df['similar_artists'].notna().any():
+            # Process similar artists - split by semicolon and flatten
+            similar_series = df['similar_artists'].dropna().str.split(';').explode().str.strip()
+            similar_series = similar_series[similar_series != '']  # Remove empty strings
+
+            if not similar_series.empty:
+                # Count occurrences of each similar artist
+                similar_counts = similar_series.value_counts().head(15)
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    fig = px.bar(
+                        x=similar_counts.values,
+                        y=similar_counts.index,
+                        orientation='h',
+                        title="🔗 Top 15 Artistes Similaires",
+                        labels={'x': 'Nombre d\'occurrences', 'y': 'Artiste similaire'},
+                        color=similar_counts.values,
+                        color_continuous_scale="Plasma"
+                    )
+                    fig.update_layout(height=500, yaxis={'categoryorder':'total ascending'})
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with col2:
+                    # Show artists with most similar artist connections
+                    # Get unique artists from our library that have similar artists listed
+                    artists_with_similar = df[df['similar_artists'].notna()]['artist'].unique()
+                    if len(artists_with_similar) > 0:
+                        st.write(f"**{len(artists_with_similar)}** artistes de votre bibliothèque ont des artistes similaires listés")
+
+                        # Show some examples
+                        sample_artists = df[df['similar_artists'].notna()][['artist', 'similar_artists']].head(5)
+                        for _, row in sample_artists.iterrows():
+                            similar_list = [s.strip() for s in str(row['similar_artists']).split(';') if s.strip()]
+                            if similar_list:
+                                st.write(f"🎵 **{row['artist']}** → {', '.join(similar_list[:3])}{'...' if len(similar_list) > 3 else ''}")
+                    else:
+                        st.info("Aucun artiste avec des similaires trouvé")
+            else:
+                st.info("Aucun artiste similaire trouvé dans les données")
+        else:
+            st.info("Colonne 'similar_artists' non disponible (activez LASTFM_API_KEY dans .env pour récupérer les artistes similaires)")
+
     with tabs[1]:
         st.header("🎤 Artistes")
         top_n = st.slider("Nombre d'artistes:", 5, 50, 20)
         scores_df = artist_score(df, playlist_cols)
         top_artists = scores_df.head(top_n)
 
+        # First row: bar chart and metrics
         col1, col2 = st.columns([2, 1])
         with col1:
             fig = px.bar(
@@ -191,6 +329,56 @@ if df is not None:
         with col2:
             st.metric("Total artistes", len(scores_df))
             st.metric("Score moyen", f"{scores_df['score'].mean():.1f}")
+
+        # Second row: additional artist insights
+        st.subheader("📈 Insights supplémentaires sur les artistes")
+        col3, col4 = st.columns(2)
+
+        with col3:
+            # Number of tracks per artist (top 10)
+            artist_track_counts = df['artist'].value_counts().head(10)
+            fig = px.bar(
+                x=artist_track_counts.values,
+                y=artist_track_counts.index,
+                orientation='h',
+                title="🎵 Nombre de pistes par artiste (Top 10)",
+                labels={'x': 'Nombre de pistes', 'y': 'Artiste'},
+                color=artist_track_counts.values,
+                color_continuous_scale="Blues"
+            )
+            fig.update_layout(height=400, yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col4:
+            # Scatter plot of artist listeners vs playcount (if Last.fm data available)
+            if 'artist_listeners' in df.columns and 'artist_playcount' in df.columns:
+                # Filter out rows where either is null
+                scatter_df = df[['artist', 'artist_listeners', 'artist_playcount']].dropna()
+                if not scatter_df.empty:
+                    # We need to aggregate by artist to avoid duplicate points
+                    artist_stats = scatter_df.groupby('artist').agg({
+                        'artist_listeners': 'mean',
+                        'artist_playcount': 'mean'
+                    }).reset_index()
+                    fig = px.scatter(
+                        artist_stats,
+                        x='artist_listeners',
+                        y='artist_playcount',
+                        size='artist_playcount',
+                        hover_name='artist',
+                        title="👥 Auditeurs vs Écoutes des artistes",
+                        labels={
+                            'artist_listeners': 'Auditeurs uniques (Last.fm)',
+                            'artist_playcount': 'Écoutes totales (Last.fm)'
+                        },
+                        color_continuous_scale="Viridis"
+                    )
+                    fig.update_layout(height=400)
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("Données Last.fm insuffisantes pour le graphique de dispersion")
+            else:
+                st.info("Données Last.fm non disponibles (activez LASTFM_API_KEY dans .env)")
 
     with tabs[2]:
         st.header("📚 Playlists")

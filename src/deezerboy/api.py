@@ -230,6 +230,60 @@ def get_genres_deezer(track_data: dict) -> Optional[str]:
         return None
 
 
+def _get_album_release_date(deezer_track_data: dict) -> Optional[str]:
+    """Get release date from Deezer album data as fallback."""
+    try:
+        album = deezer_track_data.get("album")
+        if album and album.get("id"):
+            album_data = fetch_with_retry(f"https://api.deezer.com/album/{album['id']}")
+            # Try different date fields that Deezer might provide
+            release_date = album_data.get("release_date") or album_data.get("date")
+            if release_date:
+                # Deezer might return just year, or full date
+                return release_date
+        return None
+    except Exception as exc:
+        logger.debug(f"Deezer album release date error: {exc}")
+        return None
+
+
+def _get_all_tags(artist_name: str, title: str, track_data: dict) -> Optional[str]:
+    """Collect tags from track, album, and artist sources."""
+    all_tags = set()
+
+    # Get Last.fm tags (track and artist)
+    lastfm_tags = []
+    track_data_lf = _lastfm_request("track.getInfo", {"artist": artist_name, "track": title, "autocorrect": 1})
+    artist_data_lf = _lastfm_request("artist.getInfo", {"artist": artist_name, "autocorrect": 1})
+
+    lastfm_tags.extend(_extract_tags(track_data_lf, "track"))
+    lastfm_tags.extend(_extract_tags(artist_data_lf, "artist"))
+    all_tags.update(tag.strip() for tag in lastfm_tags if tag.strip())
+
+    # Get MusicBrainz tags from recording
+    mb_result = _get_musicbrainz_enrichment(artist_name, title, track_data.get("isrc"))
+    # Note: MusicBrainz tags are already processed in _get_musicbrainz_enrichment for genre,
+    # but we could extract them separately if needed for tags field
+
+    # Get Deezer album tags (if available)
+    try:
+        album = track_data.get("album")
+        if album and album.get("id"):
+            album_data = fetch_with_retry(f"https://api.deezer.com/album/{album['id']}")
+            # Deezer album might have genres/tags - checking available fields
+            genres = album_data.get("genres", {}).get("data", [])
+            for genre in genres:
+                if isinstance(genre, dict) and genre.get("name"):
+                    all_tags.add(genre["name"].strip())
+    except Exception:
+        pass  # Ignore errors in fetching album tags
+
+    if all_tags:
+        # Return top tags joined by semicolon (limit to reasonable number)
+        return "; ".join(sorted(all_tags)[:10])
+    return None
+
+
 def _get_track_enrichment(track_data: dict) -> dict[str, Any]:
     artist_name = _normalize_artist_name(track_data)
     title = track_data.get("title", "")
@@ -238,12 +292,15 @@ def _get_track_enrichment(track_data: dict) -> dict[str, Any]:
     lastfm = get_lastfm_metadata(artist_name, title)
     mb = _get_musicbrainz_enrichment(artist_name, title, isrc)
 
+    # Get release date with fallback: MusicBrainz -> Deezer album
+    release_date = mb.get("release_date") or _get_album_release_date(track_data)
+
     genre = lastfm.get("genre") or mb.get("genre") or get_genres_deezer(track_data)
 
     result: dict[str, Any] = {
-        "release_date": mb.get("release_date"),
+        "release_date": release_date,
         "genre": genre,
-        "tags": lastfm.get("tags"),
+        "tags": _get_all_tags(artist_name, title, track_data),
         "artist_listeners": lastfm.get("artist_listeners"),
         "artist_playcount": lastfm.get("artist_playcount"),
         "track_listeners": lastfm.get("track_listeners"),
